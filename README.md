@@ -30,7 +30,7 @@ npm test
 | --- | --- | --- |
 | `GEMINI_API_KEY` | Yes | Server-only Gemini API key. Never exposed to the browser. |
 | `GEMINI_TEXT_MODEL` | No | Defaults to `gemini-3.7-flash`. |
-| `GEMINI_IMAGE_MODEL` | No | Defaults to `gemini-3.1-flash-lite-image`. |
+| `GEMINI_IMAGE_MODEL` | No | Defaults to `gemini-2.5-flash-image` — see `DECISIONS.md` for why the newer Nano Banana 2 / 2 Lite isn't the default. |
 | `SESSION_SECRET` | No for local use | Cookie-signing secret. Set a unique value outside local development. |
 
 ## Architecture
@@ -57,4 +57,8 @@ There are no automatic Gemini retries. A failure remains visible and is retried 
 
 ## Real-key UAT
 
-The automated suite uses a fake Gemini gateway so it does not consume quota. Before submission, add a key and exercise the five buttons once with a small public-domain text. Confirm generated images appear under `data/`, refresh while an image step is running, and retry a deliberately invalid-key failure after fixing the key.
+The automated suite uses a fake Gemini gateway so it does not consume quota. This app has been run against the real Gemini API, end to end, with a real key:
+
+- **Style and Characters: confirmed working**, across several real runs — real generated art-style prompts, real two-character casts with full portrait prompts, a real transient failure, and a real retry that recovered from it. The attempt-history panel in any project that hit an error is showing genuine Gemini responses, not fixtures.
+- **Portraits and Illustrations: blocked on this key's billing, not on the code.** Two different Nano Banana image models both returned `429 ... limit: 0` — an account-level free-tier gap for image generation specifically (see `DECISIONS.md`). The request/response shape for image calls is exercised by `server/gemini.test.ts` and follows the same verified Interactions API contract as the text calls; it has not yet produced a real image end to end.
+- **Before submission, whoever holds the grading Gemini key should**: enable billing (or confirm image-model access some other way), then create one project and click through all five steps. Confirm images appear under `data/`, refresh mid-image-step, and retry a deliberately invalid-key failure after fixing the key.
