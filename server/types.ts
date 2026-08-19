@@ -5,6 +5,8 @@ export type StepState = "IDLE" | "RUNNING" | "FAILED";
 
 export type Asset = { name: string; prompt: string; imageUrl?: string; imageState?: "PENDING" | "DONE" };
 
+export type Attempt = { step: StepKey; attempt: number; startedAt: string; endedAt: string; outcome: "DONE" | "FAILED"; error?: string };
+
 export type Project = {
   id: string;
   userId: string;
@@ -21,6 +23,7 @@ export type Project = {
   characters: Asset[];
   chapters: (Asset & { characters: string[] })[];
   gemini?: { fileUri?: string; bookInteractionId?: string; lastTextInteractionId?: string };
+  history: Attempt[];
 };
 
 export type User = { id: string; name: string; email: string; createdAt: string };

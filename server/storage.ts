@@ -3,14 +3,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Project, User } from "./types.js";
 
-const ROOT = path.resolve(process.cwd(), "data", "users");
 const locks = new Map<string, Promise<void>>();
-
-function userDir(email: string) {
-  return path.join(ROOT, createHash("sha256").update(email.toLowerCase()).digest("hex"));
-}
-function projectsDir(email: string) { return path.join(userDir(email), "projects"); }
-function projectFile(email: string, id: string) { return path.join(projectsDir(email), `${id}.json`); }
 
 async function writeJson(file: string, value: unknown) {
   await mkdir(path.dirname(file), { recursive: true });
@@ -24,32 +17,52 @@ async function readJson<T>(file: string): Promise<T | undefined> {
     throw error;
   }
 }
+// Projects written before attempt history existed have no `history` field on disk.
+function withHistory(project: Project): Project {
+  return project.history ? project : { ...project, history: [] };
+}
 
 export class Storage {
+  // Defaults to <cwd>/data/users, same as before. Tests pass an isolated temp
+  // directory instead — sharing the real "data" root with a live dev server
+  // meant `npm test`'s cleanup could (and once did) delete real project data.
+  private root: string;
+  constructor(root?: string) {
+    this.root = root ?? path.resolve(process.cwd(), "data", "users");
+  }
+  private userDir(email: string) {
+    return path.join(this.root, createHash("sha256").update(email.toLowerCase()).digest("hex"));
+  }
+  private projectsDir(email: string) { return path.join(this.userDir(email), "projects"); }
+  private projectFile(email: string, id: string) { return path.join(this.projectsDir(email), `${id}.json`); }
+
   async getOrCreateUser(name: string, email: string): Promise<User> {
     const normalized = email.toLowerCase();
-    const file = path.join(userDir(normalized), "user.json");
+    const file = path.join(this.userDir(normalized), "user.json");
     const existing = await readJson<User>(file);
     const user = existing ? { ...existing, name } : { id: randomUUID(), name, email: normalized, createdAt: new Date().toISOString() };
     await writeJson(file, user);
     return user;
   }
-  async getUser(email: string) { return readJson<User>(path.join(userDir(email), "user.json")); }
+  async getUser(email: string) { return readJson<User>(path.join(this.userDir(email), "user.json")); }
   async listProjects(email: string) {
     const { readdir } = await import("node:fs/promises");
     try {
-      const files = await readdir(projectsDir(email));
-      const projects = await Promise.all(files.filter((file) => file.endsWith(".json")).map((file) => readJson<Project>(path.join(projectsDir(email), file))));
-      return projects.filter((project): project is Project => Boolean(project)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      const files = await readdir(this.projectsDir(email));
+      const projects = await Promise.all(files.filter((file) => file.endsWith(".json")).map((file) => readJson<Project>(path.join(this.projectsDir(email), file))));
+      return projects.filter((project): project is Project => Boolean(project)).map(withHistory).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     } catch (error: unknown) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
       throw error;
     }
   }
-  async getProject(email: string, id: string) { return readJson<Project>(projectFile(email, id)); }
-  async saveProject(email: string, project: Project) { await writeJson(projectFile(email, project.id), project); }
-  projectBookPath(email: string, id: string) { return path.join(projectsDir(email), id, "book.txt"); }
-  projectAssetPath(email: string, id: string, name: string) { return path.join(projectsDir(email), id, "assets", name); }
+  async getProject(email: string, id: string) {
+    const project = await readJson<Project>(this.projectFile(email, id));
+    return project && withHistory(project);
+  }
+  async saveProject(email: string, project: Project) { await writeJson(this.projectFile(email, project.id), project); }
+  projectBookPath(email: string, id: string) { return path.join(this.projectsDir(email), id, "book.txt"); }
+  projectAssetPath(email: string, id: string, name: string) { return path.join(this.projectsDir(email), id, "assets", name); }
   async writeBook(email: string, id: string, text: string) {
     const file = this.projectBookPath(email, id);
     await mkdir(path.dirname(file), { recursive: true });

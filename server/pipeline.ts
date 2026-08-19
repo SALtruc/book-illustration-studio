@@ -36,12 +36,19 @@ export class Pipeline {
       if (project.stepState !== "RUNNING" || Date.now() - startedAt < STALE_AFTER_MS) throw new PipelineError("This step is still active and cannot be recovered yet.", 409);
       project.stepState = "FAILED";
       project.lastError = "The server stopped before this request completed. You can retry this step.";
+      if (project.activeStep) this.recordAttempt(project, project.activeStep, project.stepStartedAt!, "FAILED", project.lastError);
       await this.storage.saveProject(email, project);
       return project;
     });
   }
 
+  private recordAttempt(project: Project, step: StepKey, startedAt: string, outcome: "DONE" | "FAILED", error?: string) {
+    const attempt = project.history.filter((entry) => entry.step === step).length + 1;
+    project.history.push({ step, attempt, startedAt, endedAt: new Date().toISOString(), outcome, ...(error ? { error } : {}) });
+  }
+
   private async execute(email: string, project: Project, step: StepKey, suppliedStyle?: string) {
+    const startedAt = project.stepStartedAt ?? new Date().toISOString();
     try {
       const gateway = this.gatewayFactory();
       if (step === "STYLE") await this.style(email, project, gateway, suppliedStyle);
@@ -53,10 +60,13 @@ export class Pipeline {
       project.stepState = "IDLE";
       project.activeStep = undefined;
       project.stepStartedAt = undefined;
+      this.recordAttempt(project, step, startedAt, "DONE");
       await this.storage.saveProject(email, project);
     } catch (error) {
+      const message = error instanceof Error ? error.message : "The generation failed. Retry when you are ready.";
       project.stepState = "FAILED";
-      project.lastError = error instanceof Error ? error.message : "The generation failed. Retry when you are ready.";
+      project.lastError = message;
+      this.recordAttempt(project, step, startedAt, "FAILED", message);
       await this.storage.saveProject(email, project);
     }
   }
@@ -122,5 +132,5 @@ export class Pipeline {
 }
 
 export function newProject(userId: string, title: string, bookPath: string, bookText: string): Project {
-  return { id: randomUUID(), userId, title, createdAt: new Date().toISOString(), status: "CREATED", stepState: "IDLE", bookPath, bookPreview: bookText.slice(0, 260), characters: [], chapters: [] };
+  return { id: randomUUID(), userId, title, createdAt: new Date().toISOString(), status: "CREATED", stepState: "IDLE", bookPath, bookPreview: bookText.slice(0, 260), characters: [], chapters: [], history: [] };
 }
