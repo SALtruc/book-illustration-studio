@@ -1,4 +1,5 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import logo from "./logo.png";
 
 type StepKey = "STYLE" | "CHARACTERS" | "PORTRAITS" | "CHAPTERS" | "ILLUSTRATIONS";
 type Status = "CREATED" | "STYLE_SET" | "CHARACTERS_GENERATED" | "PORTRAITS_GENERATED" | "CHAPTERS_GENERATED" | "DONE";
@@ -65,7 +66,7 @@ function Identity({ onSignedIn }: { onSignedIn: (user: User) => void }) {
   return <main className="page-center"><form className="auth-card" onSubmit={submit}><Brand /><h1>Book Illustration Studio</h1><p>Start a new project or pick up an existing pipeline with your email address.</p><Field label="Full name" required><input value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" /></Field><Field label="Email" required><input value={email} onChange={(event) => setEmail(event.target.value)} type="email" autoComplete="email" /></Field>{error && <p className="form-error" role="alert">{error}</p>}<button className="button primary" disabled={saving}>{saving ? "Signing in" : "Continue"}</button><p className="fine-print">No password is required for this local assessment app.</p></form></main>;
 }
 function Nav({ user, onProjects, onSignOut }: { user: User; onProjects: () => void; onSignOut: () => void }) { return <header className="nav"><div className="nav-inner"><button className="brand-button" onClick={onProjects} aria-label="Open projects"><Brand /></button><button className="nav-link" onClick={onProjects}>Projects</button><div className="nav-user"><span className="avatar">{user.name.split(" ").map((part) => part[0]).join("").slice(0, 2)}</span><span>{user.name}</span><button className="text-button" onClick={onSignOut}>Sign out</button></div></div></header>; }
-function Brand() { return <span className="brand"><span className="brand-mark">G</span><span>GRADION</span></span>; }
+function Brand() { return <span className="brand"><img className="brand-mark" src={logo} alt="" /><span>GRADION</span></span>; }
 function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) { return <label className="field"><span>{label}{required && <b> *</b>}</span>{children}</label>; }
 
 export function ProjectList({ projects, onNew, onOpen }: { projects: Project[]; onNew: () => void; onOpen: (id: string) => void }) {
