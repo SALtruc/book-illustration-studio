@@ -4,6 +4,7 @@ import express, { type NextFunction, type Request, type Response } from "express
 import multer from "multer";
 import { access } from "node:fs/promises";
 import { GeminiClient } from "./gemini.js";
+import { isSafePathSegment } from "./paths.js";
 import { Pipeline, PipelineError, newProject } from "./pipeline.js";
 import { Storage } from "./storage.js";
 import { STEPS, type StepKey } from "./types.js";
@@ -16,6 +17,19 @@ const PORT = Number(process.env.PORT || 3001);
 const secret = process.env.SESSION_SECRET || "local-development-secret-change-me";
 
 app.use(express.json({ limit: "8mb" }));
+
+// :id and :file are used to build filesystem paths (project JSON, book text,
+// generated assets). Reject anything that isn't a single, literal path
+// segment before it ever reaches Storage — otherwise a value like
+// "..%2f..%2f.env" resolves outside the intended directory entirely.
+// Confirmed exploitable pre-fix: it could read package.json (and, absent an
+// incidental dotfile guard in Express's sendFile, .env — the real API key).
+for (const param of ["id", "file"]) {
+  app.param(param, (request, response, next, value) => {
+    if (!isSafePathSegment(String(value))) return response.status(400).json({ error: "Invalid identifier." });
+    next();
+  });
+}
 
 function sign(email: string) { return createHmac("sha256", secret).update(email).digest("base64url"); }
 function setSession(response: Response, email: string) { response.cookie("book_studio", `${Buffer.from(email).toString("base64url")}.${sign(email)}`, { httpOnly: true, sameSite: "lax", secure: false, maxAge: 7 * 24 * 60 * 60 * 1000 }); }

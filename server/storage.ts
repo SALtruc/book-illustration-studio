@@ -5,11 +5,27 @@ import type { Project, User } from "./types.js";
 
 const locks = new Map<string, Promise<void>>();
 
+const TRANSIENT_RENAME_CODES = new Set(["EPERM", "EBUSY", "EACCES"]);
+// Confirmed live, not theoretical: two saves ~milliseconds apart on the same
+// project (e.g. the portraits loop) plus a concurrent read of that file — the
+// project detail page polling while a step runs — can make Windows briefly
+// hold the destination file, and a plain rename() throws EPERM. Node has no
+// atomic "replace" primitive that sidesteps this; a short retry is what
+// write-file-atomic and friends do for the same reason.
+async function renameWithRetry(from: string, to: string, attempts = 10) {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try { return await rename(from, to); } catch (error: unknown) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (attempt === attempts || !code || !TRANSIENT_RENAME_CODES.has(code)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 20 * attempt));
+    }
+  }
+}
 async function writeJson(file: string, value: unknown) {
   await mkdir(path.dirname(file), { recursive: true });
   const temporary = `${file}.${randomUUID()}.tmp`;
   await writeFile(temporary, JSON.stringify(value, null, 2), "utf8");
-  await rename(temporary, file);
+  await renameWithRetry(temporary, file);
 }
 async function readJson<T>(file: string): Promise<T | undefined> {
   try { return JSON.parse(await readFile(file, "utf8")) as T; } catch (error: unknown) {
